@@ -1,0 +1,18 @@
+int a = 10;
+int b = 2;
+
+//swap 2 numbers
+fn swap = () -> void {
+  a = b + a;
+  b = a - b;
+  a = a - b;
+}
+
+fn sub = () -> a - b;
+
+fn main = () -> int {
+  swap();
+  sub();
+  return a;
+}
+
