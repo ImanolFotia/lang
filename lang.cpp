@@ -1,11 +1,11 @@
 #include <memory>
 #include <print>
-
 #define DEBUG_MODE 0
 
-#include "eval.hpp"
-#include "lexer.hpp"
-#include "parser.hpp"
+#include <eval.hpp>
+#include <definitions.hpp>
+#include <lexer.hpp>
+#include <parser.hpp>
 
 using namespace lexer;
 
@@ -18,11 +18,13 @@ int main(const int argc, char **argv) {
 
   lexer::Lexer l(filename);
 
+
   const auto root = std::make_shared<Node>();
   root->type = NodeType::ROOT_NODE;
   root->name = "Program";
 
-  generate_expression(l, root);
+
+  parser::generate_expression(l, root);
   eval(root);
   return 0;
 }

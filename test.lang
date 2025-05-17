@@ -8,7 +8,7 @@ fn swap = () -> void {
   a = a - b;
 }
 
-fn sub = () -> a - b;
+fn sub = () -> a + b;
 
 fn main = () -> int {
   swap();
@@ -16,3 +16,4 @@ fn main = () -> int {
   return a;
 }
 
+main();

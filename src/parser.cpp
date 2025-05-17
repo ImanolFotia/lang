@@ -1,17 +1,16 @@
-#pragma once
-#include "definitions.hpp"
-#include "eval.hpp"
-#include "lexer.hpp"
-#include "logging.hpp"
-
+#include <parser.hpp>
+#include <logging.hpp>
 #include <cstring>
+namespace parser {
 
-static bool is_any_type(const lexer::TokenType t) {
-  return t == lexer::type_int || t == lexer::type_bool || t == lexer::type_void || t == lexer::type_float ||
+
+bool is_any_type(const lexer::TokenType t) {
+  return t == lexer::type_int || t == lexer::type_bool ||
+         t == lexer::type_void || t == lexer::type_float ||
          t == lexer::type_string || t == lexer::type_char;
 }
 
-static Type get_type(const lexer::Token &t) {
+Type get_type(const lexer::Token &t) {
   if (t.type == lexer::type_int)
     return INT;
   if (t.type == lexer::type_float)
@@ -27,12 +26,12 @@ static Type get_type(const lexer::Token &t) {
   return UNKNOWN;
 }
 
-static Function parse_function_header(lexer::Lexer &l) {
+Function parse_function_header(lexer::Lexer &l) {
   Function fun;
   l.next();
   if (l.expect(lexer::id)) {
     fun.name = l.get().str;
-    if (functions.contains(fun.name)) {
+    if (State::functions.contains(fun.name)) {
       std::println("Function {} already exists!", fun.name);
       exit(255);
     }
@@ -50,9 +49,10 @@ static Function parse_function_header(lexer::Lexer &l) {
               logging::expected_error(l.get(), "identifier");
             }
           }
-          if (l.get().type == lexer::close_brace || l.get().type == lexer::arrow) {
+          if (l.get().type == lexer::close_brace ||
+              l.get().type == lexer::arrow) {
             logging::expected_error(l.get(), ")");
-          }
+              }
         }
         if (l.expect(lexer::arrow)) {
           l.next();
@@ -62,10 +62,36 @@ static Function parse_function_header(lexer::Lexer &l) {
             if (l.expect(lexer::open_brace)) {
 
             } else {
-              logging::expected_error(l.get(), "(");
+              logging::expected_error(l.get(), "{");
             }
           } else {
             fun.single_expression = true;
+            int tokens_moved = 1;
+            l.next();
+            while (!l.expect(lexer::semicolon)) {
+              tokens_moved++;
+              switch (l.get().type) {
+              case lexer::int_literal:
+              case lexer::float_literal:
+              case lexer::string_literal:
+              case lexer::assign:
+              case lexer::open_paren:
+              case lexer::close_paren:
+              case lexer::divide:
+              case lexer::multiply:
+              case lexer::plus:
+              case lexer::minus:
+              case lexer::id:
+              case lexer::ret:
+                break;
+              default:
+                logging::expected_error(l.get(),
+                                        "literal, operator or identifier");
+                break;
+              }
+              l.next();
+            }
+            l.move(-tokens_moved);
           }
         } else {
           logging::expected_error(l.get(), "->");
@@ -85,7 +111,8 @@ static Function parse_function_header(lexer::Lexer &l) {
   return fun;
 }
 
-static void parse_expression(lexer::Lexer &l, const std::shared_ptr<Node> &node) {
+void parse_expression(lexer::Lexer &l,
+                             const std::shared_ptr<Node> &node) {
   if (l.parsed_tokens.empty())
     return;
   while (!l.expect(lexer::semicolon) && !l.done()) {
@@ -105,10 +132,10 @@ static void parse_expression(lexer::Lexer &l, const std::shared_ptr<Node> &node)
         node->binop_type = BinOpType::MINUS;
     case lexer::divide:
       if (l.get().type == lexer::divide)
-      node->binop_type = BinOpType::DIV;
+        node->binop_type = BinOpType::DIV;
     case lexer::multiply:
       if (l.get().type == lexer::multiply)
-      node->binop_type = BinOpType::MUL;
+        node->binop_type = BinOpType::MUL;
     case lexer::plus: {
       if (l.get().type == lexer::plus)
         node->binop_type = BinOpType::PLUS;
@@ -129,7 +156,7 @@ static void parse_expression(lexer::Lexer &l, const std::shared_ptr<Node> &node)
       return;
     }
     case lexer::id: {
-      if (!vars.contains(l.get().str)) {
+      if (!State::vars.contains(l.get().str)) {
         std::println("[ERROR] undeclared variable {}", l.get().str);
         exit(1);
       }
@@ -151,17 +178,17 @@ static void parse_expression(lexer::Lexer &l, const std::shared_ptr<Node> &node)
   }
 }
 
-static std::shared_ptr<Node> create_expression(lexer::Lexer &l,
-                                        const std::shared_ptr<Node> &node) {
+std::shared_ptr<Node>
+create_expression(lexer::Lexer &l, const std::shared_ptr<Node> &node) {
   const auto expr = node->append(NodeType::EXPRESSION);
   if (const auto next_semicolon = l.find_next(lexer::semicolon);
       next_semicolon == std::nullopt) {
     logging::expected_error(l.get(), ";");
-  }
+      }
   return expr->append(NodeType::EXPRESSION);
 }
 
-static void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
+void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
   while (!l.expect(lexer::eof)) {
     switch (l.get().type) {
     case lexer::fn: {
@@ -174,7 +201,8 @@ static void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
       func_body->name = fun.name + "_body";
       func_body->parent = func_decl;
       func_body->function = fun;
-      functions[fun.name] = func_body;
+      State::functions[fun.name] = func_body;
+
       if (fun.single_expression) {
         auto expr_body = create_expression(l, func_body);
         auto next_semicolon = l.find_next(lexer::semicolon);
@@ -192,7 +220,7 @@ static void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
       break;
     }
     case lexer::id: {
-      if (vars.contains(l.get().str)) {
+      if (State::vars.contains(l.get().str)) {
         std::string var_name = l.get().str;
         l.next();
         if (l.expect(lexer::assign)) {
@@ -201,7 +229,7 @@ static void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
           auto nl = l.slice(l.current_token - 1, next_semicolon.value() + 1);
           auto expr = expr_body->append(NodeType::BINOP);
           expr->binop_type = BinOpType::ASSIGNMENT;
-          expr->left = vars[var_name];
+          expr->left = State::vars[var_name];
           expr->left->name = var_name;
           expr->right = std::make_shared<Node>();
           parse_expression(nl, expr->right);
@@ -209,7 +237,7 @@ static void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
         } else {
           if (l.expect(lexer::semicolon)) {
             auto &single_expr = node->body.emplace_back();
-            single_expr = vars[var_name];
+            single_expr = State::vars[var_name];
             break;
           }
           auto expr_body = create_expression(l, node);
@@ -219,14 +247,15 @@ static void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
           parse_expression(nl, expr_body);
           l.advance(next_semicolon.value());
         }
-      } else if (functions.contains(l.get().str)) {
+      } else if (State::functions.contains(l.get().str)) {
         std::string func_name = l.get().str;
         l.next();
-        if (l.next().type == lexer::open_paren && l.next().type == lexer::close_paren) {
+        if (l.next().type == lexer::open_paren &&
+            l.next().type == lexer::close_paren) {
           auto func_call_node = node->append(NodeType::FUNCTION_CALL);
           func_call_node->name = func_name;
-          func_call_node->body.push_back(functions[func_name]);
-        }
+          func_call_node->body.push_back(State::functions[func_name]);
+            }
         if (!l.expect(lexer::semicolon)) {
           logging::expected_error(l.get(), ";");
         }
@@ -247,11 +276,11 @@ static void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
 
         auto var = new_node->append(NodeType::IDENTIFIER);
 
-        if (vars.contains(id_name)) {
+        if (State::vars.contains(id_name)) {
           std::println("[ERROR] variable {} is already declared.", id_name);
           exit(1);
         }
-        vars[id_name] = var;
+        State::vars[id_name] = var;
         if (l.expect(lexer::assign)) {
           l.next();
           if (l.expect(lexer::semicolon))
@@ -264,7 +293,7 @@ static void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
           auto nl = l.slice(l.current_token, next_semicolon.value() + 1);
           auto expr = new_node->append(NodeType::BINOP);
           expr->binop_type = BinOpType::ASSIGNMENT;
-          expr->left = vars[id_name];
+          expr->left = State::vars[id_name];
           expr->left->name = id_name;
           expr->right = std::make_shared<Node>();
           parse_expression(nl, expr->right);
@@ -275,8 +304,10 @@ static void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
       break;
     }
     case lexer::close_brace: {
-      node = node->parent;
-      node = node->parent;
+      if (!node->function.single_expression && node->parent != nullptr) {
+        node = node->parent;
+        node = node->parent;
+      }
       break;
     }
     case lexer::ret: {
@@ -296,4 +327,5 @@ static void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
     }
     l.next();
   }
+}
 }

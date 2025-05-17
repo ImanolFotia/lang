@@ -1,8 +1,8 @@
 #pragma once
-#include "lexer.hpp"
+#include <lexer.hpp>
 
-#include <string>
 #include <print>
+#include <string>
 
 namespace logging {
 

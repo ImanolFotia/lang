@@ -3,6 +3,7 @@
 #include <list>
 #include <memory>
 #include <unordered_map>
+#include <print>
 
 enum Type : int { INT = 0, FLOAT, STRING, BOOL, CHAR, VOID, UNKNOWN };
 
@@ -81,3 +82,21 @@ struct Node {
     return node;
   }
 };
+
+struct Test {
+  Test() {
+    std::println("test instanced");
+  }
+};
+
+struct State{
+
+  static std::unordered_map<std::string, std::shared_ptr<Node>> vars;
+  static std::unordered_map<std::string, std::shared_ptr<Node>> functions;
+
+  static Test test;
+
+  static std::string name;
+};
+
+
