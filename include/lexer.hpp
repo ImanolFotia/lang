@@ -1,12 +1,7 @@
 #pragma once
-#include <chrono>
-#include <fstream>
-#include <any>
-#include <print>
-
-#include "utils.hpp"
-
 #include <algorithm>
+#include <any>
+#include <chrono>
 
 namespace lexer {
 enum TokenType : int {
@@ -37,13 +32,41 @@ enum TokenType : int {
   semicolon,
   comma,
   print,
+  loop,
+  colon,
   none
 };
 
-const std::vector<std::string> tokens = {
-    "",       "=",    "+",    "-",    "/", "*", "(",     ")",  "{",   "}",
-    "return", "",     "",     "",     "",  "",  "fn",    "->", "int", "float",
-    "string", "char", "bool", "void", ";", ",", "print", ""};
+const std::vector<std::string> tokens = {"",
+                                         "=",
+                                         "+",
+                                         "-",
+                                         "/",
+                                         "*",
+                                         "(",
+                                         ")",
+                                         "{",
+                                         "}",
+                                         "return",
+                                         "",
+                                         "",
+                                         "",
+                                         "",
+                                         "",
+                                         "fn",
+                                         "->",
+                                         "int",
+                                         "float",
+                                         "string",
+                                         "char",
+                                         "bool",
+                                         "void",
+                                         ";",
+                                         ",",
+                                         "print",
+                                         "loop",
+                                         ":",
+                                         ""};
 
 const std::vector<std::string> token_names = {"id",
                                               "assign",
@@ -72,6 +95,8 @@ const std::vector<std::string> token_names = {"id",
                                               "semicolon",
                                               "comma",
                                               "print",
+                                              "loop",
+                                              "color",
                                               "none"};
 
 struct Token {
@@ -93,15 +118,14 @@ struct Lexer {
   Lexer() = default;
   explicit Lexer(std::string &str) : file_str{str} { tokenize(str); }
 
-
   [[nodiscard]] bool done() const;
   void remove_comments();
   static bool any_token(const std::string &str, Token &token);
 
-  static bool is_float(const std::string &str) ;
+  static bool is_float(const std::string &str);
   static bool is_int(const std::string &str);
   void print_tokens();
-  std::pair<Lexer, Lexer> bisect() ;
+  std::pair<Lexer, Lexer> bisect();
   void advance(size_t x);
   void move(int x);
 

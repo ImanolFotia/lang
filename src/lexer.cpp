@@ -102,34 +102,37 @@ std::optional<size_t> Lexer::find_next(const TokenType t) {
   return std::nullopt;
 }
 
+bool parsing_string = false;
+bool parsing_float = false;
 Token Lexer::next_token() {
   if (curr_pos >= file_str.size())
     return {"", eof};
   std::string buff{};
   Token t, tt;
-  bool parsing_string = false;
   bool line_break = false;
   while (curr_pos < file_str.size()) {
     const char c = file_str[curr_pos++];
     curr_char++;
-    if ((c == ' ' || c == '\n') && !buff.empty()) {
+    if ((c == ' ' || c == '\n') && !buff.empty() && parsing_string == false) {
       if (c == '\n') {
         line_break = true;
       }
       break;
     }
-    if (c == ' ') {
+    if (c == ' ' && parsing_string == false) {
       continue;
     }
+
     if (c == '\n' && parsing_string == false) {
       line_break = true;
       continue;
     }
-    if (c == '\"' && parsing_string == false) {
-      parsing_string = true;
-    } else if (c == '\"') {
+    if (c == '\"') {
+      if (parsing_string == false) {
+        parsing_string = true;
+        continue;
+      }
       parsing_string = false;
-      buff += c;
       t.type = string_literal;
       break;
     }
@@ -137,13 +140,13 @@ Token Lexer::next_token() {
       return {"", eof};
     buff += c;
 
-    if ((parsing_string == false && any_token(buff, t) &&
+    if (any_token(buff, t) &&
          file_str.size() > curr_pos &&
          (file_str[curr_pos] == ' ' ||
-          !any_token(file_str.substr(curr_pos, 1), tt))) ||
+          !any_token(file_str.substr(curr_pos, 1), tt)) ||
         any_token(file_str.substr(curr_pos, 1), tt)) {
 
-      if (buff[0] == '-' && file_str[curr_pos + 1] != '>')
+      if (buff[0] == '-' && file_str[curr_pos + 1] != '>' || parsing_string == true)
         continue;
       break;
     }
@@ -164,6 +167,16 @@ Token Lexer::next_token() {
 
   if (t.str.empty()) {
     t.type = none;
+  }
+
+  if (t.type == string_literal) {
+    size_t new_line = t.str.find("\\n");
+    while (new_line != std::string::npos) {
+      if (new_line != std::string::npos) {
+        t.str.replace(new_line, 2, "\n");
+      }
+      new_line = t.str.find("\\n");
+    }
   }
   t.line_number = curr_line;
   t.char_number = curr_char - t.str.size();
@@ -235,4 +248,4 @@ void Lexer::tokenize(std::string &filename) {
   }
 #endif
 }
-};
+}; // namespace lexer
