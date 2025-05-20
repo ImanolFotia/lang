@@ -2,8 +2,8 @@
 #include <any>
 #include <list>
 #include <memory>
-#include <unordered_map>
 #include <print>
+#include <unordered_map>
 
 enum Type : int { INT = 0, FLOAT, STRING, BOOL, CHAR, VOID, UNKNOWN };
 
@@ -16,13 +16,13 @@ struct Variable {
   std::any value;
 };
 
-
 enum class NodeType {
   ROOT_NODE,
   FUNCTION_DECLARATION,
   ASSIGNMENT,
   IDENTIFIER,
   FUNCTION_CALL,
+  FUNCTION_CALL_PARAM,
   FUNCTION_BODY,
   VARIABLE_DECLARATION,
   VARIABLE_ASSIGNMENT,
@@ -31,6 +31,8 @@ enum class NodeType {
   LITERAL,
   EXPRESSION,
   PRINT,
+  LOOP_DECLARATION,
+  LOOP_BODY,
   NONE
 };
 
@@ -83,20 +85,9 @@ struct Node {
   }
 };
 
-struct Test {
-  Test() {
-    std::println("test instanced");
-  }
-};
 
-struct State{
-
+struct State {
   static std::unordered_map<std::string, std::shared_ptr<Node>> vars;
   static std::unordered_map<std::string, std::shared_ptr<Node>> functions;
-
-  static Test test;
-
-  static std::string name;
+  static std::unordered_map<std::string, std::shared_ptr<Node>> scope_variables;
 };
-
-
