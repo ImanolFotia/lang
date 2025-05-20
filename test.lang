@@ -1,19 +1,23 @@
-int a = 10;
-int b = 2;
+fn add = (int x, int y) -> x + y;
 
-//swap 2 numbers
-fn swap = () -> void {
-  a = b + a;
-  b = a - b;
-  a = a - b;
+fn fibonacci = (int n) -> int {
+  print("generating the first $n fibonacci numbers");
+
+  int b = 0;
+  int a = 1;
+  int c = 0;
+
+  loop n {
+    c = add(a, b);
+    a = b;
+    b = c;
+  }
+  a;
 }
 
-fn sub = () -> a + b;
-
-fn main = () -> int {
-  swap();
-  sub();
-  return a;
+fn main = () -> void {
+  int result = fibonacci(40);
+  print("the result is $result");
 }
 
 main();

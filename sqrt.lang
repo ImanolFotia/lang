@@ -1,0 +1,13 @@
+//Sqrt (babylonian method)
+
+fn sqrt = (float a) -> float {
+  float x = a * 0.5;
+  loop 10 {
+    x = 0.5 * x + a / x;
+  }
+}
+
+float n = 2.0;
+float res = sqrt(n);
+
+print("The square root of $n is $res");
