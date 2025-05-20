@@ -1,8 +1,7 @@
-#include <parser.hpp>
-#include <logging.hpp>
 #include <cstring>
+#include <logging.hpp>
+#include <parser.hpp>
 namespace parser {
-
 
 bool is_any_type(const lexer::TokenType t) {
   return t == lexer::type_int || t == lexer::type_bool ||
@@ -52,7 +51,7 @@ Function parse_function_header(lexer::Lexer &l) {
           if (l.get().type == lexer::close_brace ||
               l.get().type == lexer::arrow) {
             logging::expected_error(l.get(), ")");
-              }
+          }
         }
         if (l.expect(lexer::arrow)) {
           l.next();
@@ -111,8 +110,7 @@ Function parse_function_header(lexer::Lexer &l) {
   return fun;
 }
 
-void parse_expression(lexer::Lexer &l,
-                             const std::shared_ptr<Node> &node) {
+void parse_expression(lexer::Lexer &l, const std::shared_ptr<Node> &node) {
   if (l.parsed_tokens.empty())
     return;
   while (!l.expect(lexer::semicolon) && !l.done()) {
@@ -124,6 +122,21 @@ void parse_expression(lexer::Lexer &l,
       if (errno == ERANGE) {
         std::println("error: {}", strerror(errno));
       }
+      if (l.parsed_tokens.size() <= 1)
+        return;
+      break;
+    case lexer::float_literal:
+      node->type = NodeType::LITERAL;
+      errno = 0;
+      node->value = std::stof(l.get().str);//static_cast<float>(strtoll(l.get().str.c_str(), nullptr, 10));
+
+      if (l.parsed_tokens.size() <= 1)
+        return;
+      break;
+    case lexer::string_literal:
+      node->type = NodeType::LITERAL;
+      errno = 0;
+      node->value = l.get().str;
       if (l.parsed_tokens.size() <= 1)
         return;
       break;
@@ -157,10 +170,65 @@ void parse_expression(lexer::Lexer &l,
     }
     case lexer::id: {
       if (!State::vars.contains(l.get().str)) {
-        std::println("[ERROR] undeclared variable {}", l.get().str);
-        exit(1);
+        if (!State::scope_variables.contains(l.get().str)) {
+          if (State::functions.contains(l.get().str)) {
+            std::string func_name = l.get().str;
+            l.next();
+            if (l.next().type == lexer::open_paren) {
+
+              auto func_call_node = node->append(NodeType::FUNCTION_CALL);
+              func_call_node->name = func_name;
+
+              while (l.get().type != lexer::close_paren) {
+                if (l.get().type == lexer::id ||
+                    l.get().type == lexer::int_literal ||
+                    l.get().type == lexer::string_literal ||
+                    l.get().type == lexer::float_literal) {
+                  auto arg_node =
+                      func_call_node->append(NodeType::FUNCTION_CALL_PARAM);
+                  arg_node->name = l.get().str;
+                  if (l.get().type == lexer::int_literal) {
+                    auto arg_val = arg_node->append(NodeType::LITERAL);
+                    arg_val->value =
+                        static_cast<int>(strtol(l.get().str.c_str(), nullptr, 10));
+                  }
+                  if (l.get().type == lexer::string_literal) {
+                    auto arg_val = arg_node->append(NodeType::LITERAL);
+                    arg_val->value = l.get().str;
+                  }
+
+                  if (l.get().type == lexer::float_literal){
+                    auto arg_val = arg_node->append(NodeType::LITERAL);
+                    arg_val->value = std::stof(l.get().str);
+                  }
+                  if (l.get().type == lexer::id) {
+                    auto arg_val = arg_node->append(NodeType::IDENTIFIER);
+                    arg_val->name = l.get().str;
+                  }
+                  l.next();
+                    }
+                if (l.expect(lexer::close_paren)) {
+                  l.next();
+                  break;
+                }
+                if (!l.expect(lexer::comma)) {
+                  logging::expected_error(l.get(), "',' or ')'");
+                }
+                l.next();
+              }
+
+              func_call_node->body.push_back(State::functions[func_name]);
+              func_call_node->function = State::functions[func_name]->function;
+              node->type = NodeType::IDENTIFIER;
+              node->name = func_name;
+              break;
+            }
+          } else {
+            std::println("[ERROR] undeclared variable {}", l.get().str);
+            exit(1);
+          }
+        }
       }
-      node->value = strtol(l.get().str.c_str(), nullptr, 10);
       node->type = NodeType::IDENTIFIER;
       node->name = l.get().str;
       if (l.parsed_tokens.size() <= 1)
@@ -171,6 +239,18 @@ void parse_expression(lexer::Lexer &l,
     case lexer::close_brace:
       logging::expected_error(l.get(), ";");
       break;
+    case lexer::print:
+      l.next();
+      if (l.expect(lexer::open_paren)) {
+        l.next();
+        while (!l.expect(lexer::close_paren)) {
+          if (l.expect(lexer::comma)) {
+          }
+        }
+      } else {
+        logging::expected_error(l.get(), "(");
+      }
+      break;
     default:
       break;
     }
@@ -178,13 +258,13 @@ void parse_expression(lexer::Lexer &l,
   }
 }
 
-std::shared_ptr<Node>
-create_expression(lexer::Lexer &l, const std::shared_ptr<Node> &node) {
+std::shared_ptr<Node> create_expression(lexer::Lexer &l,
+                                        const std::shared_ptr<Node> &node) {
   const auto expr = node->append(NodeType::EXPRESSION);
   if (const auto next_semicolon = l.find_next(lexer::semicolon);
       next_semicolon == std::nullopt) {
     logging::expected_error(l.get(), ";");
-      }
+  }
   return expr->append(NodeType::EXPRESSION);
 }
 
@@ -194,10 +274,14 @@ void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
     case lexer::fn: {
       Function fun = parse_function_header(l);
       auto func_decl = node->append(NodeType::FUNCTION_DECLARATION);
+
       func_decl->function = fun;
       func_decl->name = fun.name;
       func_decl->parent = node;
       auto func_body = func_decl->append(NodeType::FUNCTION_BODY);
+      for (auto &[key, value] : fun.arguments) {
+        State::scope_variables[key] = func_decl->append(NodeType::IDENTIFIER);
+      }
       func_body->name = fun.name + "_body";
       func_body->parent = func_decl;
       func_body->function = fun;
@@ -217,6 +301,17 @@ void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
     case lexer::int_literal: {
       auto lit = node->append(NodeType::LITERAL);
       lit->value = static_cast<int>(strtol(l.get().str.c_str(), nullptr, 10));
+      break;
+    }
+
+    case lexer::float_literal: {
+      auto lit = node->append(NodeType::LITERAL);
+      lit->value =  std::stof(l.get().str);
+      break;
+    }
+    case lexer::string_literal: {
+      auto lit = node->append(NodeType::LITERAL);
+      lit->value = l.get().str;
       break;
     }
     case lexer::id: {
@@ -250,12 +345,55 @@ void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
       } else if (State::functions.contains(l.get().str)) {
         std::string func_name = l.get().str;
         l.next();
-        if (l.next().type == lexer::open_paren &&
-            l.next().type == lexer::close_paren) {
+        if (l.next().type == lexer::open_paren) {
+
           auto func_call_node = node->append(NodeType::FUNCTION_CALL);
           func_call_node->name = func_name;
-          func_call_node->body.push_back(State::functions[func_name]);
+          int num_args = 0;
+
+          while (l.get().type != lexer::close_paren) {
+            if (l.get().type == lexer::id ||
+                l.get().type == lexer::int_literal ||
+                l.get().type == lexer::string_literal ||
+                l.get().type == lexer::float_literal) {
+              num_args++;
+              auto arg_node =
+                  func_call_node->append(NodeType::FUNCTION_CALL_PARAM);
+              arg_node->name = l.get().str;
+              if (l.get().type == lexer::int_literal) {
+                auto arg_val = arg_node->append(NodeType::LITERAL);
+                arg_val->value = static_cast<int>(strtol(l.get().str.c_str(), nullptr, 10));
+              }
+              if (l.get().type == lexer::string_literal) {
+                auto arg_val = arg_node->append(NodeType::LITERAL);
+                arg_val->value = l.get().str;
+              }
+
+              if (l.get().type == lexer::float_literal) {
+                auto arg_val = arg_node->append(NodeType::LITERAL);
+                arg_val->value = std::stof(l.get().str);
+              }
+              if (l.get().type == lexer::id) {
+                auto arg_val = arg_node->append(NodeType::IDENTIFIER);
+                arg_val->name = l.get().str;
+              }
+              l.next();
             }
+            if (l.expect(lexer::close_paren)) {
+              l.next();
+              break;
+            }
+            if (!l.expect(lexer::comma)) {
+              logging::expected_error(l.get(), "',' or ')'");
+            }
+            l.next();
+          }
+
+          if (num_args == 0) l.next();
+
+          func_call_node->body.push_back(State::functions[func_name]);
+          func_call_node->function = State::functions[func_name]->function;
+        }
         if (!l.expect(lexer::semicolon)) {
           logging::expected_error(l.get(), ";");
         }
@@ -265,7 +403,47 @@ void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
       }
       break;
     }
+    case lexer::type_float:
     case lexer::type_int: {
+      l.next();
+      if (l.expect(lexer::id)) {
+        std::string id_name = l.get().str;
+
+        l.next();
+        auto new_node = node->append(NodeType::VARIABLE_DECLARATION);
+        new_node->name = id_name;
+
+        auto var = new_node->append(NodeType::IDENTIFIER);
+
+        if (State::vars.contains(id_name)) {
+          std::println("[ERROR] variable {} is already declared.", id_name);
+          exit(1);
+        }
+        State::vars[id_name] = var;
+        if (l.expect(lexer::assign)) {
+          l.next();
+          if (l.expect(lexer::semicolon))
+            logging::expected_error(l.get(),
+                                    "identifier, literal or expression");
+          auto next_semicolon = l.find_next(lexer::semicolon);
+          if (next_semicolon == std::nullopt) {
+            logging::expected_error(l.get(), ";");
+          }
+          auto nl = l.slice(l.current_token, next_semicolon.value() + 1);
+          auto expr = new_node->append(NodeType::BINOP);
+          expr->binop_type = BinOpType::ASSIGNMENT;
+          expr->left = State::vars[id_name];
+          expr->left->name = id_name;
+          expr->right = std::make_shared<Node>();
+          parse_expression(nl, expr->right);
+          l.advance(next_semicolon.value());
+        } else {
+        }
+      }
+      break;
+    }
+
+    case lexer::type_string: {
       l.next();
       if (l.expect(lexer::id)) {
         std::string id_name = l.get().str;
@@ -307,6 +485,7 @@ void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
       if (!node->function.single_expression && node->parent != nullptr) {
         node = node->parent;
         node = node->parent;
+        State::scope_variables.clear();
       }
       break;
     }
@@ -321,6 +500,43 @@ void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
       auto nl = l.slice(l.current_token, next_semicolon.value() + 1);
       parse_expression(nl, expr_body);
       l.advance(next_semicolon.value());
+      break;
+    }
+    case lexer::print: {
+      l.next();
+      auto print_node = node->append(NodeType::PRINT);
+      if (l.expect(lexer::open_paren)) {
+        l.next();
+        if (l.expect(lexer::string_literal)) {
+          auto lit_node = print_node->append(NodeType::LITERAL);
+          lit_node->value = l.get().str;
+        } else if (l.expect(lexer::close_paren)) {
+          break;
+        } else if (l.expect(lexer::id)) {
+          auto id_node = print_node->append(NodeType::IDENTIFIER);
+          id_node->value = State::vars[l.get().str];
+        } else {
+          logging::expected_error(l.get(), "string literal or identifier");
+        }
+      }
+      break;
+    }
+
+    case lexer::loop: {
+      l.next();
+      if (l.expect(lexer::id) || l.expect(lexer::int_literal)) {
+        auto loop_decl = node->append(NodeType::LOOP_DECLARATION);
+        loop_decl->parent = node;
+        loop_decl->condition = std::make_shared<Node>();
+        loop_decl->condition->type = NodeType::EXPRESSION;
+        auto cond = loop_decl->condition->append(l.get().type == lexer::id ? NodeType::IDENTIFIER:NodeType::LITERAL);
+        cond->name = l.get().str;
+        if (l.get().type == lexer::int_literal)
+          cond->value = (int)strtol(l.get().str.c_str(), nullptr, 10);
+        auto loop_body = loop_decl->append(NodeType::LOOP_BODY);
+        loop_body->parent = loop_decl;
+        node = loop_body;
+      }
     }
     default:
       break;
@@ -328,4 +544,4 @@ void generate_expression(lexer::Lexer &l, std::shared_ptr<Node> node) {
     l.next();
   }
 }
-}
+} // namespace parser

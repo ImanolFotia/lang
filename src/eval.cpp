@@ -1,12 +1,15 @@
+#include "lexer.hpp"
+
 #include <any>
 #include <memory>
-#include <string>
 #include <print>
+#include <string>
 
 #include <eval.hpp>
+#include <ranges>
 
 bool is_numeric(const std::any &x) {
-  return x.type() == typeid(int) || x.type() == typeid(double) ||
+  return x.type() == typeid(int) || x.type() == typeid(float) ||
          x.type() == typeid(char);
 }
 
@@ -20,28 +23,27 @@ bool try_eval(const std::any &x, const std::any &y) {
   return (is_numeric(x) && is_numeric(y)) || (is_string(x) && is_string(y));
 }
 
-
 std::any eval_numeric(const std::any &x, const std::any &y,
-                             const BinOpType op) {
+                      const BinOpType op) {
   std::any result;
   if (x.type() == typeid(int) && y.type() == typeid(int))
     return eval_numeric_op(std::any_cast<int>(x), std::any_cast<int>(y), op);
-  if (x.type() == typeid(int) && y.type() == typeid(double))
-    return eval_numeric_op(std::any_cast<int>(x), std::any_cast<double>(y), op);
-  if (x.type() == typeid(double) && y.type() == typeid(int))
-    return eval_numeric_op(std::any_cast<double>(x), std::any_cast<int>(y), op);
-  if (x.type() == typeid(double) && y.type() == typeid(double))
-    return eval_numeric_op(std::any_cast<double>(x), std::any_cast<double>(y),
+  if (x.type() == typeid(int) && y.type() == typeid(float))
+    return eval_numeric_op(std::any_cast<int>(x), std::any_cast<float>(y), op);
+  if (x.type() == typeid(float) && y.type() == typeid(int))
+    return eval_numeric_op(std::any_cast<float>(x), std::any_cast<int>(y), op);
+  if (x.type() == typeid(float) && y.type() == typeid(float))
+    return eval_numeric_op(std::any_cast<float>(x), std::any_cast<float>(y),
                            op);
   if (x.type() == typeid(char) && y.type() == typeid(int))
     return eval_numeric_op(std::any_cast<char>(x), std::any_cast<int>(y), op);
   if (x.type() == typeid(int) && y.type() == typeid(char))
     return eval_numeric_op(std::any_cast<int>(x), std::any_cast<char>(y), op);
-  if (x.type() == typeid(char) && y.type() == typeid(double))
-    return eval_numeric_op(std::any_cast<char>(x), std::any_cast<double>(y),
+  if (x.type() == typeid(char) && y.type() == typeid(float))
+    return eval_numeric_op(std::any_cast<char>(x), std::any_cast<float>(y),
                            op);
-  if (x.type() == typeid(double) && y.type() == typeid(char))
-    return eval_numeric_op(std::any_cast<double>(x), std::any_cast<char>(y),
+  if (x.type() == typeid(float) && y.type() == typeid(char))
+    return eval_numeric_op(std::any_cast<float>(x), std::any_cast<char>(y),
                            op);
   if (x.type() == typeid(bool) && y.type() == typeid(bool))
     return eval_numeric_op(std::any_cast<bool>(x), std::any_cast<bool>(y), op);
@@ -75,6 +77,43 @@ void print_any(std::any x) {
   }
 }
 
+std::string interpolate_string(std::string literal) {
+  std::string str;
+
+  for (int i = 0; i < literal.size(); i++) {
+    char c = literal[i];
+    if (c == '$') {
+      std::string var_name;
+      c = literal[++i];
+      lexer::Token tt;
+      std::string tstr = {c};
+      while (c != ' ' && c != '\\' && c != '\n'&& c != '\0' && i < literal.size() && !lexer::Lexer::any_token(tstr, tt)) {
+        var_name += c;
+        c = literal[++i];
+        tstr = {c};
+      }
+      std::any value;
+      if (State::vars.contains(var_name)) {
+        value = eval(State::vars[var_name]);
+      } else if (State::scope_variables.contains(var_name)) {
+        value = eval(State::scope_variables[var_name]);
+      }
+
+      if (value.type() == typeid(int)) {
+        str += std::format("{}", std::any_cast<int>(value));
+      }
+      if (value.type() == typeid(float)) {
+        str += std::format("{}", std::any_cast<float>(value));
+      }
+      if (c != '\0')
+        str += c;
+      continue;
+    }
+    str += c;
+  }
+  return str;
+}
+
 std::any eval(const std::shared_ptr<Node> &node) {
   std::any ret_value;
   switch (node->type) {
@@ -82,12 +121,36 @@ std::any eval(const std::shared_ptr<Node> &node) {
     for (const auto &n : node->body)
       eval(n);
     break;
-  case NodeType::FUNCTION_CALL:
-    for (const auto &n : node->body)
-      ret_value = eval(n);
-    if (ret_value.has_value())
-      print_any(ret_value);
-    break;
+  case NodeType::FUNCTION_CALL: {
+    auto prev_vars = State::scope_variables;
+    State::scope_variables.clear();
+    int arg_count = node->function.arguments.size();
+    size_t count = 0;
+    auto n = node->body.begin();
+    for (const auto &name : node->function.arguments | std::views::keys) {
+      if (count >= arg_count || (*n)->type != NodeType::FUNCTION_CALL_PARAM)
+        break;
+      State::scope_variables[name] = std::make_shared<Node>();
+      State::scope_variables[name]->value = eval((*n)->body.front());
+      State::scope_variables[name]->type = NodeType::IDENTIFIER;
+      State::scope_variables[name]->name = name;
+      std::advance(n, 1);
+      count++;
+    }
+
+    if (count != arg_count) {
+      std::println("[ERROR] when calling function {}: parameter count missmatch", node->function.name);
+      exit(1);
+    }
+
+    ret_value = eval(*n);
+
+    State::scope_variables = prev_vars;
+
+    //if (ret_value.has_value())
+    //  print_any(ret_value);
+    return ret_value;
+  } break;
   case NodeType::BINOP:
     switch (node->binop_type) {
     case BinOpType::ASSIGNMENT:
@@ -102,28 +165,73 @@ std::any eval(const std::shared_ptr<Node> &node) {
       if (n->type == NodeType::RETURN)
         break;
     }
-    if (node->function.return_type == VOID) ret_value.reset();
+    if (node->function.return_type == VOID)
+      ret_value.reset();
+    return ret_value;
+
+  case NodeType::LOOP_BODY:
+    for (auto &n : node->body) {
+      ret_value = eval(n);
+    }
+    if (node->function.return_type == VOID)
+      ret_value.reset();
     return ret_value;
   case NodeType::VARIABLE_DECLARATION:
     for (const auto &n : node->body)
       node->value = eval(n);
     break;
   case NodeType::LITERAL:
-    return std::any_cast<int>(node->value);
+    if (node->value.type() == typeid(int))
+      return std::any_cast<int>(node->value);
+    if (node->value.type() == typeid(float))
+      return std::any_cast<float>(node->value);
+    if (node->value.type() == typeid(std::string))
+      return std::any_cast<std::string>(node->value);
   case NodeType::RETURN:
     for (const auto &n : node->body)
       node->value = eval(n);
     return node->value;
   case NodeType::IDENTIFIER:
-    node->value = State::vars[node->name]->value;
-    return State::vars[node->name]->value;
+    if (State::scope_variables.contains(node->name)) {
+      node->value = State::scope_variables[node->name]->value;
+      return State::scope_variables[node->name]->value;
+    }
+    if (State::vars.contains(node->name)) {
+      node->value = State::vars[node->name]->value;
+      return State::vars[node->name]->value;
+    }
   case NodeType::EXPRESSION:
     for (const auto &n : node->body)
       return eval(n);
     break;
   case NodeType::PRINT:
-    std::print("{}", std::any_cast<int>(node->value));
+    for (const auto &arg : node->body) {
+      if (arg->type == NodeType::LITERAL) {
+
+        auto literal = std::any_cast<std::string>(arg->value);
+        std::println("{}", interpolate_string(literal));
+      }
+      else if (arg->type == NodeType::IDENTIFIER) {
+        std::string literal = std::any_cast<std::string>(
+                      std::any_cast<std::shared_ptr<Node>>(arg->value)->value);
+        std::println(
+            "{}", interpolate_string(literal));
+      }
+    }
     break;
+
+  case NodeType::LOOP_DECLARATION: {
+    int loops = std::any_cast<int>(eval(node->condition));
+    State::scope_variables["_index"];
+    State::scope_variables["_index"] = std::make_shared<Node>();
+    State::scope_variables["_index"]->type = NodeType::LITERAL;
+    State::scope_variables["_index"]->name = "_index";
+    for (int i = 0; i < loops; i++) {
+      State::scope_variables["_index"]->value = i;
+      ret_value = eval(node->body.front());
+    }
+    return ret_value;
+  }
   default:
     break;
   }

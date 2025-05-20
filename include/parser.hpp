@@ -1,10 +1,9 @@
 #pragma once
-#include <definitions.hpp>
 #include "lexer.hpp"
+#include <definitions.hpp>
 #include <unordered_map>
 
 namespace parser {
-
 
 bool is_any_type(const lexer::TokenType t);
 

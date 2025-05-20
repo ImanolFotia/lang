@@ -1,6 +1,6 @@
 #pragma once
-#include <definitions.hpp>
 #include <any>
+#include <definitions.hpp>
 #include <memory>
 
 bool is_numeric(const std::any &x);
@@ -38,8 +38,7 @@ static std::common_type_t<X, Y> eval_numeric_op(X x, Y y, const BinOpType op) {
   return 0;
 }
 
-std::any eval_numeric(const std::any &x, const std::any &y,
-                             const BinOpType op);
+std::any eval_numeric(const std::any &x, const std::any &y, const BinOpType op);
 
 std::any eval_binop(const std::any &x, const std::any &y, BinOpType op);
 
